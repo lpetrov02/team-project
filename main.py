@@ -3,9 +3,10 @@ import datetime
 
 
 token = "65e6efa565e6efa565e6efa54f6593fb1f665e665e6efa53a5c6937a4636b3416a8bd92"
-user_id = 'memkn'
 session1 = vk.AuthSession(access_token=token)
 vk_api = vk.API(session1, v=5.92)
+
+group_id = 'memkn'
 
 
 def get_user_last_seen(profile_id):
@@ -48,8 +49,8 @@ def is_online(online_time):
         return 0
 
 
-def online_proportion(group_id):
-    group_members_ids = get_group_followers(group_id)
+def online_proportion(group_page_id):
+    group_members_ids = get_group_followers(group_page_id)
     group_amount = 0
     group_online = 0
     for profile in group_members_ids:
@@ -65,4 +66,4 @@ def online_proportion(group_id):
         return percent_online
 
 
-print(online_proportion(user_id))
+print(online_proportion(group_id))
