@@ -11,7 +11,7 @@ group_id = 'memkn'
 
 def get_user_last_seen(profile_id):
     """
-    shows when user was online
+    gets when user was online
     :param profile_id:
     :return time:
     """
@@ -24,7 +24,7 @@ def get_user_last_seen(profile_id):
 
 def get_group_followers(group_page_id):
     """
-    shows when user was online
+    getting group followers
     :param group_page_id:
     :return list of followers id:
     """
