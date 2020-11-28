@@ -216,12 +216,16 @@ while run:
             # value = vk_api2.messages.getLongPollHistory(ts=current_ts, group_id=my_number_group_id)
     elif message == "stop":
         run = 0
+        vk_api2.messages.send(user_id=current_user_id, message="Goodbye!", random_id=count)
+        count += 1
     elif message == "hello" or message == "привет" or message == "Hello" or message == "Привет":
         string = "Ну привет, "
         value = vk_api2.users.get(user_ids=current_user_id, fields='first_name')
         string += value[0]['first_name']
         vk_api2.messages.send(user_id=current_user_id, message=string, random_id=count)
-    else:
+        count += 1
+    elif message != "":
         string = "I understand just such a format: 'group_id: *id*; period: * period time *'. Please, write correctly))"
         vk_api2.messages.send(user_id=current_user_id, message=string, random_id=count)
         count += 1
+
