@@ -53,6 +53,12 @@ class Group:
         t0 = time.time() - t0
         return t0, percent
 
+    def work_and_print(self, count, current_user_id):
+        start_time, percent = self.group_analyse()
+        string = "Online percent in " + self.group_id + " is " + str(percent) + "%"
+        vk_api2.messages.send(user_id=current_user_id, message=string, random_id=count)
+        return count + 1
+
     def group_analyse1(self):
         t0 = time.time()
         all_members, online_members = self.count_online_proportion()
@@ -136,7 +142,7 @@ def approximate_time(real_time):
     """
     gets time user was last seen and adds two minutes
     :param real_time: time user was last seen online
-    :return: real_time plus 2 min
+    :return: real_time plus delta min
     """
 
     hours = real_time.hour
@@ -184,6 +190,39 @@ def get_message(group_id, server_, ts_, key_):
     return "", -1, response['ts']
 
 
+def count_new_time(time_now, period):
+    d_minutes = period
+    d_hours = 0
+    if period > 59:
+        d_minutes = period % 60
+        d_hours = period // 60
+    minutes = time_now.minute
+    hours = time_now.hour
+    days = time_now.day
+    months = time_now.month
+    years = time_now.year
+    if years % 4 == 0 and years % 100 != 0 or years % 400 == 0:
+        month_length[1] += 1
+
+    minutes = (minutes + d_minutes) % 60
+    if minutes < time_now.minute:
+        hours += 1
+    hours += d_hours
+    if hours > 23:
+        hours %= 24
+        days += 1
+    if days > month_length[time_now.month]:
+        days = 1
+        months += 1
+    if months > 12:
+        months = 1
+        years += 1
+    month_length[1] -= 1
+
+    new_time = time_now.replace(minute=minutes, hour=hours, day=days, month=months, year=years)
+    return new_time
+
+
 some = vk_api2.groups.getLongPollServer(group_id=my_number_group_id)
 current_ts = some['ts']
 server = some['server']
@@ -191,30 +230,49 @@ key = some['key']
 message = ""
 run = 1
 count = 0
+have_a_task = 0
+group = Group(-1, -1)
 while run:
     message, current_user_id, current_ts = get_message(my_number_group_id, server, current_ts, key)
+    if have_a_task and datetime.datetime.now() >= next_time:
+        current_minutes = time_start.minute
+        next_time = count_new_time(next_time, group.frequency)
+        count = group.work_and_print(count, master_id)
 
     # print(message)
     if message.count(';') > 0:
         index = message.find(";")
-        if message[0: 10] == "group_id: " and message[index + 2: index + 10] == "period: ":
-            analyse_group_id = message[10: index]
-            frequency = message[index + 10:]
-            if frequency == "frequently":
-                frequency_number = 0
-            elif frequency.isdigit():
-                frequency_number = int(frequency)
-            else:
-                print("Error")
-                exit()
-
-            group = Group(analyse_group_id, frequency_number)
-            start_time, percent = group.group_analyse()
-            string = "Online percent in " + group.group_id + " is " + str(percent) + "%"
-            vk_api2.messages.send(user_id=current_user_id, message=string, random_id=count)
-            count += 1
-            # value = vk_api2.messages.getLongPollHistory(ts=current_ts, group_id=my_number_group_id)
-    elif message == "stop":
+        if index > 10 and len(message) - index - 10 > 0:
+            if message[0: 10] == "group_id: " and message[index + 2: index + 10] == "period: ":
+                analyse_group_id = message[10: index].strip()
+                frequency = message[index + 10:].strip()
+                if frequency == "frequently" or frequency.isdigit():
+                    if frequency == "frequently":
+                        frequency_number = 0
+                    else:
+                        frequency_number = int(frequency)
+                    have_a_task = 1
+                    master_id = current_user_id
+                    # time when we start - in seconds and in a special type
+                    t_start = time.time()
+                    time_start = datetime.datetime.now()
+                    current_minutes = time_start.minute
+                    next_time = count_new_time(time_start, frequency_number)
+                    # next_minutes - when to count again
+                    group.group_id = analyse_group_id
+                    group.frequency = frequency_number
+                    count = group.work_and_print(count, current_user_id)
+                    t_finish = time.time() - t_start
+                    # if analysing took more time than the period:
+                    if t_finish > frequency_number * 60:
+                        vk_api2.messages.send(user_id=current_user_id, message="Can't work so fast((", random_id=count)
+                        count += 1
+                        next_time = datetime.datetime.now()
+                        frequency_number = 0
+                        group.frequency = 0
+                else:
+                    print("Error")
+    elif message == "stop" or message == "Stop":
         run = 0
         vk_api2.messages.send(user_id=current_user_id, message="Goodbye!", random_id=count)
         count += 1
