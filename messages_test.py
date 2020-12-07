@@ -11,10 +11,14 @@ class Group:
     we don't really need this now but i suppose it would be useful in the nearest future
     """
 
-    def __init__(self, group_id, freq):
+    def __init__(self, group_id, freq, master_id):
         self.group_id = group_id
+        self.master_id = master_id
         self.begin = datetime.datetime.now()
         self.frequency = freq
+        self.percents = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        self.archive = [[0, 0, 0, 0] for i in range(12)]
+        self.number = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 
     def count_online_proportion(self):
         """
@@ -53,8 +57,36 @@ class Group:
         t0 = time.time() - t0
         return t0, percent
 
+    def update_data(self, new_one, cell_to_update):
+        if self.number[cell_to_update] >= 4:
+            self.percents[cell_to_update] *= 4
+            self.percents[cell_to_update] = self.percents[cell_to_update] - self.archive[cell_to_update][0] + new_one
+            self.percents[cell_to_update] /= 4
+        else:
+            self.percents[cell_to_update] *= self.number[cell_to_update]
+            self.percents[cell_to_update] = self.percents[cell_to_update] + new_one
+            self.percents[cell_to_update] /= self.number[cell_to_update]
+            self.number[cell_to_update] += 1
+        for j in range(3):
+            self.archive[cell_to_update][j] = self.archive[cell_to_update][j + 1]
+        self.archive[cell_to_update][3] = new_one
+
+    def recommend(self, count):
+        recommend_message = "The best time is "
+        max_online, best_time = 0, 0
+        for i in range(12):
+            if self.percents[i] > max_online:
+                max_online = self.percents[i]
+                best_time = i
+        best_time *= self.frequency
+        recommend_message += str(best_time) + " minutes: " + str(max_online) + "%"
+        vk_api2.messages.send(user_id=self.master_id, message=recommend_message, random_id=count)
+        return count + 1
+
     def work_and_print(self, count, current_user_id):
+        array_cell = datetime.datetime.now().minute // self.frequency
         start_time, percent = self.group_analyse()
+        self.update_data(percent, array_cell)
         string = "Online percent in " + self.group_id + " is " + str(percent) + "%"
         vk_api2.messages.send(user_id=current_user_id, message=string, random_id=count)
         return count + 1
@@ -95,6 +127,7 @@ class Group:
                     "_____________________________________________________________________________________________")
                 t0 = time.time() - t0
                 time.sleep(self.frequency * 60 - t0)
+
 
 
 token = "65e6efa565e6efa565e6efa54f6593fb1f665e665e6efa53a5c6937a4636b3416a8bd92"
@@ -181,16 +214,17 @@ def is_online(online_time):
 
 
 def get_message(group_id, server_, ts_, key_):
-    # some = vk_api2.groups.getLongPollServer(group_id=group_id)
+    # gets the message from the user
     response = requests.get('{server}?act=a_check&key={key}&ts={ts}&wait=25'.format
                             (server=server_, key=key_, ts=ts_)).json()
-    # print(response)
     if len(response['updates']) > 0:
         return response['updates'][0]['object']['body'], response['updates'][0]['object']['user_id'], response['ts']
     return "", -1, response['ts']
 
 
 def count_new_time(time_now, period):
+    # gets the time, when the counting stats process was last started and returns time, when to start the process again.
+    # just adds period.
     d_minutes = period
     d_hours = 0
     if period > 59:
@@ -211,7 +245,7 @@ def count_new_time(time_now, period):
     if hours > 23:
         hours %= 24
         days += 1
-    if days > month_length[time_now.month]:
+    if days > month_length[time_now.month - 1]:
         days = 1
         months += 1
     if months > 12:
@@ -223,6 +257,114 @@ def count_new_time(time_now, period):
     return new_time
 
 
+def handle_input_message(message):
+    # gets the massage from the user and returns a code which depends on the message type. Also returns the group id
+    # and needed frequency. These fields will be used afterwards only if the message is: group_id: ...; period: ...
+    if message == "stop" or message == "Stop":
+        return 1, "", -1
+    if message == "":
+        return 0, "", -1
+    if message == "lsr_memkn6":
+        return 2, "", -1
+    if message.count(';') == 1:
+        index = message.find(';')
+        if message[0: 9].strip() != "group_id:" or message[index + 1:].count('d') != 1 \
+           or message[index + 1: message[index + 1:].find('d') + 3 + index].strip() != "period:":
+            return -1, "", -1
+        period = message[message[index + 1:].find('d') + 3 + index:].strip()
+        group = message[9: index].strip()
+        if not check_for_correct(group):
+            return 5, "", -1
+        if not period.isdigit() and not period == "frequently":
+            return -1, "", -1
+        elif period == "frequently":
+            return 3, group, 0
+        else:
+            return 3, group, int(period)
+    string1 = message[0: 6]
+    string2 = message[0: 5]
+    if string1 == "Привет" or string1 == "привет" or string2 == "Hello" or string2 == "hello":
+        return 4, "", -1
+    return -1, "", -1
+
+
+def switch_off(count, current_user_id):
+    # switches the bot off, the special password is needed
+    vk_api2.messages.send(user_id=current_user_id, message="Goodbye!", random_id=count)
+    return 0, count + 1
+
+
+def incorrect_id(count, current_user_id):
+    # informs about the mistake
+    vk_api2.messages.send(user_id=current_user_id, message="Wrong group id!", random_id=count)
+    return count + 1
+
+
+def cancel_the_task(have_a_task, current_user_id, count, master_id):
+    # Cancels the current task, it is is asked by the user who gave the task earlier
+    if have_a_task and current_user_id == master_id:
+        vk_api2.messages.send(user_id=current_user_id, message="Your task is cancelled!", random_id=count)
+        return 0, count + 1
+    elif have_a_task:
+        vk_api2.messages.send(user_id=current_user_id, message="Sorry, I am working on the other user's task!",
+                              random_id=count)
+        return 1, count + 1
+    else:
+        vk_api2.messages.send(user_id=current_user_id, message="Я сделал ничего, не благодари!",
+                              random_id=count)
+        return 0, count + 1
+
+
+def say_hello(count, current_user_id):
+    # sends a message 'Ну привет, ....'
+    string = "Ну привет, "
+    value = vk_api2.users.get(user_ids=current_user_id, fields='first_name')
+    string += value[0]['first_name']
+    vk_api2.messages.send(user_id=current_user_id, message=string, random_id=count)
+    return count + 1
+
+
+def instruction_message(count, current_user_id):
+    # sends the message if user did send us the message of an unknown format
+    string = "I am really sorry but i don't understand you. I know the format: 'group_id: ...; period: ...' Be careful!"
+    vk_api2.messages.send(user_id=current_user_id, message=string, random_id=count)
+    return count + 1
+
+
+def repeat_the_process(master_id, count, next_time):
+    # current_minutes = time_start.minute
+    next_time = count_new_time(next_time, group.frequency)
+    count = group.work_and_print(count, master_id)
+    return next_time, count
+
+
+def first_process(count, master_id, group):
+    t0 = time.time()
+    time_start = datetime.datetime.now()
+    next_time = count_new_time(time_start, group.frequency)
+    # next_minutes - when to count again
+    count = group.work_and_print(count, master_id)
+    t0 = time.time() - t0
+    # if analysing took more time than the period:
+    if t0 > group.frequency * 60:
+        vk_api2.messages.send(user_id=master_id, message="Can't work so fast((",
+                              random_id=count)
+        next_time = datetime.datetime.now()
+        group.frequency = 0
+        return next_time, count + 1
+    return next_time, count
+
+
+def check_for_correct(group_id):
+    try:
+        your_group_info = vk_api.groups.getById(group_id=group_id, fields='members_count', count=1)
+    except vk.exceptions.VkAPIError:
+        return 0
+    return 1
+
+
+# starts working, gives default values to some variables
+
 some = vk_api2.groups.getLongPollServer(group_id=my_number_group_id)
 current_ts = some['ts']
 server = some['server']
@@ -231,59 +373,49 @@ message = ""
 run = 1
 count = 0
 have_a_task = 0
-group = Group(-1, -1)
+group = Group(-1, -1, -1)
+master_id = -1
+next_recommend = datetime.datetime.now()
+next_time = datetime.datetime.now()
+
+# the end of 'initialization' block
+
 while run:
     message, current_user_id, current_ts = get_message(my_number_group_id, server, current_ts, key)
     if have_a_task and datetime.datetime.now() >= next_time:
-        current_minutes = time_start.minute
-        next_time = count_new_time(next_time, group.frequency)
-        count = group.work_and_print(count, master_id)
+        next_time, count = repeat_the_process(master_id, count, next_time)
+    if have_a_task and datetime.datetime.now() >= next_recommend:
+        count = group.recommend(count)
+        next_recommend = count_new_time(next_recommend, 60)
 
-    # print(message)
-    if message.count(';') > 0:
-        index = message.find(";")
-        if index > 10 and len(message) - index - 10 > 0:
-            if message[0: 10] == "group_id: " and message[index + 2: index + 10] == "period: ":
-                analyse_group_id = message[10: index].strip()
-                frequency = message[index + 10:].strip()
-                if frequency == "frequently" or frequency.isdigit():
-                    if frequency == "frequently":
-                        frequency_number = 0
-                    else:
-                        frequency_number = int(frequency)
-                    have_a_task = 1
-                    master_id = current_user_id
-                    # time when we start - in seconds and in a special type
-                    t_start = time.time()
-                    time_start = datetime.datetime.now()
-                    current_minutes = time_start.minute
-                    next_time = count_new_time(time_start, frequency_number)
-                    # next_minutes - when to count again
-                    group.group_id = analyse_group_id
-                    group.frequency = frequency_number
-                    count = group.work_and_print(count, current_user_id)
-                    t_finish = time.time() - t_start
-                    # if analysing took more time than the period:
-                    if t_finish > frequency_number * 60:
-                        vk_api2.messages.send(user_id=current_user_id, message="Can't work so fast((", random_id=count)
-                        count += 1
-                        next_time = datetime.datetime.now()
-                        frequency_number = 0
-                        group.frequency = 0
-                else:
-                    print("Error")
-    elif message == "stop" or message == "Stop":
-        run = 0
-        vk_api2.messages.send(user_id=current_user_id, message="Goodbye!", random_id=count)
-        count += 1
-    elif message == "hello" or message == "привет" or message == "Hello" or message == "Привет":
-        string = "Ну привет, "
-        value = vk_api2.users.get(user_ids=current_user_id, fields='first_name')
-        string += value[0]['first_name']
-        vk_api2.messages.send(user_id=current_user_id, message=string, random_id=count)
-        count += 1
-    elif message != "":
-        string = "I understand just such a format: 'group_id: *id*; period: * period time *'. Please, write correctly))"
-        vk_api2.messages.send(user_id=current_user_id, message=string, random_id=count)
-        count += 1
+    code, analyse_group_id, frequency_number = handle_input_message(message)
 
+    if code == 3:
+        if not have_a_task or current_user_id == master_id:
+            have_a_task = 1
+            master_id = current_user_id
+            group.group_id = analyse_group_id
+            group.frequency = frequency_number
+            group.master_id = master_id
+            # To start not at 17:48 but at 17:50, for example
+            minutes_now = datetime.datetime.now().minute
+            ok_message = "OK! Starting in " + str(group.frequency - minutes_now % group.frequency) + " minutes!"
+            vk_api2.messages.send(user_id=current_user_id, message=ok_message, random_id=count)
+            count += 1
+            next_time = count_new_time(datetime.datetime.now(), group.frequency - minutes_now % group.frequency)
+            current_time = datetime.datetime.now()
+            next_recommend = current_time.replace(microsecond=0, second=0, minute=0)
+            next_recommend = count_new_time(next_recommend, 60)
+        else:
+            vk_api2.messages.send(user_id=current_user_id, message="Sorry, I am busy!", random_id=count)
+            count += 1
+    elif code == 2:
+        run, count = switch_off(count, current_user_id)
+    elif code == 1:
+        have_a_task, count = cancel_the_task(have_a_task, current_user_id, count, master_id)
+    elif code == 4:
+        count = say_hello(count, current_user_id)
+    elif code == -1:
+        count = instruction_message(count, current_user_id)
+    elif code == 5:
+        count = incorrect_id(count, current_user_id)
