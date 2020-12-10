@@ -7,18 +7,36 @@ import math
 
 
 class Group:
-    """
-    we don't really need this now but i suppose it would be useful in the nearest future
-    """
-
     def __init__(self, group_id, freq, master_id):
+        """
+          group_id: the group to analyse
+          master_id: id of the user who gave the task
+          frequency: how many minutes should pass between two adjoining analyses
+          analyses_per_day: daily amount of analyses
+          percents: online percents in each 'moment' of the week (not more than 672 moments)
+          archive: old data, we need this to delete old info whe 4 weeks pass
+          number: technical moment. Actually, first three weeks are special: to count the average meaning we need not to
+        divide by 4, but to divide by the number - spacial for each array cell.
+        Just because we don't have enough information yet!!
+          index_to_date: in the storage we keep the moment of time as a code - gust an integer number. But the user
+        would prefer 'Mon, 00:00: 30%' to '0: 30%'. That's why we need this array
+        """
         self.group_id = group_id
         self.master_id = master_id
-        self.begin = datetime.datetime.now()
         self.frequency = freq
-        self.percents = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        self.archive = [[0, 0, 0, 0] for i in range(12)]
-        self.number = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        self.analyses_per_day = 1440 // self.frequency
+        analyses_per_week = self.analyses_per_day * 7
+        self.percents = [0 for i in range(analyses_per_week)]
+        self.archive = [[0, 0, 0, 0] for i in range(analyses_per_week)]
+        self.number = [0 for i in range(analyses_per_week)]
+        self.index_to_date = []
+        for i in range(analyses_per_week):
+            week_day = i // self.analyses_per_day
+            time_index = i % self.analyses_per_day * self.frequency
+            hour_index = time_index // 60
+            minute_index = time_index % 60
+            s = days_of_the_week[week_day] + ", " + str(hour_index) + ":" + str(minute_index)
+            self.index_to_date.append(s)
 
     def count_online_proportion(self):
         """
@@ -47,8 +65,11 @@ class Group:
             return one_more_number_of_members, online
 
     def group_analyse(self):
+        """
+        counts the online percent
+        :return:
+        """
         t0 = time.time()
-        current_time = datetime.datetime.now()
 
         all_members, online_members = self.count_online_proportion()
         percent = online_members / all_members * 100
@@ -65,8 +86,8 @@ class Group:
         else:
             self.percents[cell_to_update] *= self.number[cell_to_update]
             self.percents[cell_to_update] = self.percents[cell_to_update] + new_one
-            self.percents[cell_to_update] /= self.number[cell_to_update]
             self.number[cell_to_update] += 1
+            self.percents[cell_to_update] /= self.number[cell_to_update]
         for j in range(3):
             self.archive[cell_to_update][j] = self.archive[cell_to_update][j + 1]
         self.archive[cell_to_update][3] = new_one
@@ -74,24 +95,31 @@ class Group:
     def recommend(self, count):
         recommend_message = "The best time is "
         max_online, best_time = 0, 0
-        for i in range(12):
+        for i in range(self.analyses_per_day * 7):
             if self.percents[i] > max_online:
                 max_online = self.percents[i]
                 best_time = i
-        best_time *= self.frequency
-        recommend_message += str(best_time) + " minutes: " + str(max_online) + "%"
+        recommend_message += self.index_to_date[best_time] + ": " + str(max_online) + "%"
         vk_api2.messages.send(user_id=self.master_id, message=recommend_message, random_id=count)
         return count + 1
 
-    def work_and_print(self, count, current_user_id):
-        array_cell = datetime.datetime.now().minute // self.frequency
+    def work_and_print(self, count):
+        """
+        updates data and sends current online percent
+        :param count - is needed to send messages:
+        :return:
+        """
+        week_day = datetime.datetime.now().weekday()
+        t = datetime.datetime.now()
+        array_cell = self.analyses_per_day * week_day + (t.hour * 60 + t.minute) // self.frequency
         start_time, percent = self.group_analyse()
         self.update_data(percent, array_cell)
         string = "Online percent in " + self.group_id + " is " + str(percent) + "%"
-        vk_api2.messages.send(user_id=current_user_id, message=string, random_id=count)
+        vk_api2.messages.send(user_id=self.master_id, message=string, random_id=count)
         return count + 1
 
-    def group_analyse1(self):
+    '''
+    def group_analyse_console(self):
         t0 = time.time()
         all_members, online_members = self.count_online_proportion()
         percent = online_members / all_members * 100
@@ -127,6 +155,31 @@ class Group:
                     "_____________________________________________________________________________________________")
                 t0 = time.time() - t0
                 time.sleep(self.frequency * 60 - t0)
+    '''
+
+    def repeat_the_process(self, count, next_time):
+        """
+        :param count - is needed to send messages to the user:
+        :param next_time - when to analyse again:
+        :return:
+        """
+        next_time = count_new_time(next_time, self.frequency)
+        count = self.work_and_print(count)
+        return next_time, count
+    
+    def count_times(self, count):
+        """
+        This function runs in the very beginning. It counts when to start analysing and when to give recommendations
+        """
+        current_time = datetime.datetime.now()
+        minutes_now = current_time.minute
+        round_current_time = current_time.replace(microsecond=0, second=0)
+        next_time = count_new_time(round_current_time, self.frequency - minutes_now % self.frequency)
+        next_recommend = current_time.replace(microsecond=0, second=0, minute=0, hour=0)
+        next_recommend = count_new_time(next_recommend, 1440)
+        ok_message = "OK! Starting in " + str(self.frequency - minutes_now % self.frequency) + " minutes!"
+        vk_api2.messages.send(user_id=self.master_id, message=ok_message, random_id=count)
+        return count + 1, next_time, next_recommend
 
 
 
@@ -142,6 +195,7 @@ vk_api = vk.API(session1, v=5.92)
 vk_api2 = vk.API(session2, v=5.92)
 
 month_length = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+days_of_the_week = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
 def get_user_last_seen(profile_id):
@@ -257,7 +311,7 @@ def count_new_time(time_now, period):
     return new_time
 
 
-def handle_input_message(message):
+def process_input_message(message):
     # gets the massage from the user and returns a code which depends on the message type. Also returns the group id
     # and needed frequency. These fields will be used afterwards only if the message is: group_id: ...; period: ...
     if message == "stop" or message == "Stop":
@@ -275,10 +329,10 @@ def handle_input_message(message):
         group = message[9: index].strip()
         if not check_for_correct(group):
             return 5, "", -1
-        if not period.isdigit() and not period == "frequently":
+        if not period.isdigit():
             return -1, "", -1
-        elif period == "frequently":
-            return 3, group, 0
+        elif int(period) < 60 and 60 % int(period) != 0 or int(period) < 15 or 1440 % int(period) != 0:
+            return 6, "", -1
         else:
             return 3, group, int(period)
     string1 = message[0: 6]
@@ -297,6 +351,13 @@ def switch_off(count, current_user_id):
 def incorrect_id(count, current_user_id):
     # informs about the mistake
     vk_api2.messages.send(user_id=current_user_id, message="Wrong group id!", random_id=count)
+    return count + 1
+
+
+def incorrect_period_value(count, current_user_id):
+    # informs about the mistake
+    s = "Period should be not less than 15 and should divide 1440!"
+    vk_api2.messages.send(user_id=current_user_id, message=s, random_id=count)
     return count + 1
 
 
@@ -326,16 +387,14 @@ def say_hello(count, current_user_id):
 
 def instruction_message(count, current_user_id):
     # sends the message if user did send us the message of an unknown format
-    string = "I am really sorry but i don't understand you. I know the format: 'group_id: ...; period: ...' Be careful!"
+    string = "Maaaaaaan! I don't understand you...   "
+    string += "You can SAY HELLO: your message should start with 'hello' or 'привет';   "
+    string += "You can give me a task in such a way: 'group_id: 'the_group_id'; period: 'period'.   "
+    string += "Period should be pretty and not too small)   "
+    string += "You can cancel YOUR task: just send 'stop'   "
+    string += "Have a good day!!"
     vk_api2.messages.send(user_id=current_user_id, message=string, random_id=count)
     return count + 1
-
-
-def repeat_the_process(master_id, count, next_time):
-    # current_minutes = time_start.minute
-    next_time = count_new_time(next_time, group.frequency)
-    count = group.work_and_print(count, master_id)
-    return next_time, count
 
 
 def first_process(count, master_id, group):
@@ -372,50 +431,64 @@ key = some['key']
 message = ""
 run = 1
 count = 0
-have_a_task = 0
-group = Group(-1, -1, -1)
 master_id = -1
+have_a_task = 0
 next_recommend = datetime.datetime.now()
 next_time = datetime.datetime.now()
 
 # the end of 'initialization' block
 
 while run:
+    # wait for new requests
     message, current_user_id, current_ts = get_message(my_number_group_id, server, current_ts, key)
+    
+    # chek if it is time to analyse again
     if have_a_task and datetime.datetime.now() >= next_time:
-        next_time, count = repeat_the_process(master_id, count, next_time)
+        next_time, count = group.repeat_the_process(count, next_time)
+        
+    # check if it is time to give recommendations
     if have_a_task and datetime.datetime.now() >= next_recommend:
         count = group.recommend(count)
-        next_recommend = count_new_time(next_recommend, 60)
+        next_recommend = count_new_time(next_recommend, 1440)
 
-    code, analyse_group_id, frequency_number = handle_input_message(message)
+    code, analyse_group_id, frequency_number = process_input_message(message)
 
     if code == 3:
+        # this code means that user gave a correct task
         if not have_a_task or current_user_id == master_id:
+            '''
+            if the bot is free or is working on the task of the same user, who is giving a new one. In this case
+            bot receives a new task and forgets about the old one if it did exist
+            '''
             have_a_task = 1
-            master_id = current_user_id
-            group.group_id = analyse_group_id
-            group.frequency = frequency_number
-            group.master_id = master_id
-            # To start not at 17:48 but at 17:50, for example
-            minutes_now = datetime.datetime.now().minute
-            ok_message = "OK! Starting in " + str(group.frequency - minutes_now % group.frequency) + " minutes!"
-            vk_api2.messages.send(user_id=current_user_id, message=ok_message, random_id=count)
-            count += 1
-            next_time = count_new_time(datetime.datetime.now(), group.frequency - minutes_now % group.frequency)
-            current_time = datetime.datetime.now()
-            next_recommend = current_time.replace(microsecond=0, second=0, minute=0)
-            next_recommend = count_new_time(next_recommend, 60)
+            # group initialising block
+            group = Group(analyse_group_id, frequency_number, current_user_id)
+            master_id = group.master_id
+            # counting time when to start and when to give a new recommendation
+            count, next_time, next_recommend = group.count_times(count)
         else:
+            # in the case when the user wants to give a new task while bot is already working on the OTHER user's task.
             vk_api2.messages.send(user_id=current_user_id, message="Sorry, I am busy!", random_id=count)
             count += 1
     elif code == 2:
+        # if the bot has received a secret password which switches it off
         run, count = switch_off(count, current_user_id)
     elif code == 1:
+        # if the user WHO GAVE A TASK decided to cancel it with a 'stop' or 'Stop' command
         have_a_task, count = cancel_the_task(have_a_task, current_user_id, count, master_id)
+        del group
     elif code == 4:
+        # greeting
         count = say_hello(count, current_user_id)
     elif code == -1:
+        # unknown message
         count = instruction_message(count, current_user_id)
     elif code == 5:
+        # if the group does not exist
         count = incorrect_id(count, current_user_id)
+    elif code == 6:
+        '''
+        if the period doesn't divide 60 (if it is less than 60) or if it doesn't divide 1440 
+        (number of minutes in a day)
+        '''
+        count = incorrect_period_value(count, current_user_id)
