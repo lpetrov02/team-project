@@ -36,6 +36,8 @@ class Group:
             hour_index = time_index // 60
             minute_index = time_index % 60
             s = days_of_the_week[week_day] + ", " + str(hour_index) + ":" + str(minute_index)
+            if minute_index == 0:
+                s += '0'
             self.index_to_date.append(s)
 
     def count_online_proportion(self):
@@ -92,16 +94,40 @@ class Group:
             self.archive[cell_to_update][j] = self.archive[cell_to_update][j + 1]
         self.archive[cell_to_update][3] = new_one
 
-    def recommend(self, count):
-        recommend_message = "The best time is "
+    def recommend_day(self, count):
+        day = datetime.datetime.now().weekday()
+        start = day * self.analyses_per_day
+        finish = (day + 1) * self.analyses_per_day
+        recommend_message = "Today the best time was "
         max_online, best_time = 0, 0
-        for i in range(self.analyses_per_day * 7):
+        for i in range(start, finish):
             if self.percents[i] > max_online:
                 max_online = self.percents[i]
                 best_time = i
         recommend_message += self.index_to_date[best_time] + ": " + str(max_online) + "%"
         vk_api2.messages.send(user_id=self.master_id, message=recommend_message, random_id=count)
         return count + 1
+
+    def recommend_week(self, count):
+        recommend_message = "This week the best time was "
+        max_online, best_time, max_average_during_the_day, best_day = 0, 0, 0, 0
+        for j in range(7):
+            average = 0
+            for i in range(self.analyses_per_day * j, self.analyses_per_day * (j + 1)):
+                average += self.percents[i]
+                if self.percents[i] > max_online:
+                    max_online = self.percents[i]
+                    best_time = i
+            if average > max_average_during_the_day:
+                max_average_during_the_day = average
+                best_day = j
+        max_average_during_the_day /= self.analyses_per_day
+        recommend_message += self.index_to_date[best_time] + ": " + str(max_online) + "%"
+        vk_api2.messages.send(user_id=self.master_id, message=recommend_message, random_id=count)
+        recommend_message = "This week, the day with the biggest average online percent was " +\
+                            days_of_the_week[best_day] + ": " + str(max_average_during_the_day) + "%"
+        vk_api2.messages.send(user_id=self.master_id, message=recommend_message, random_id=(count + 1))
+        return count + 2
 
     def work_and_print(self, count):
         """
@@ -172,7 +198,7 @@ class Group:
         This function runs in the very beginning. It counts when to start analysing and when to give recommendations
         """
         current_time = datetime.datetime.now()
-        minutes_now = current_time.minute
+        minutes_now = current_time.minute + current_time.hour * 60
         round_current_time = current_time.replace(microsecond=0, second=0)
         next_time = count_new_time(round_current_time, self.frequency - minutes_now % self.frequency)
         next_recommend = current_time.replace(microsecond=0, second=0, minute=0, hour=0)
@@ -339,6 +365,10 @@ def process_input_message(message):
     string2 = message[0: 5]
     if string1 == "Привет" or string1 == "привет" or string2 == "Hello" or string2 == "hello":
         return 4, "", -1
+    if message == "Recommend: day" or message == "recommend: day":
+        return 7, "", -1
+    if message == "Recommend: week" or message == "recommend: week":
+        return 8, "", -1
     return -1, "", -1
 
 
@@ -381,7 +411,7 @@ def say_hello(count, current_user_id):
     string = "Ну привет, "
     value = vk_api2.users.get(user_ids=current_user_id, fields='first_name')
     string += value[0]['first_name']
-    vk_api2.messages.send(user_id=current_user_id, message=string, random_id=count)
+    something = vk_api2.messages.send(user_id=current_user_id, message=string, random_id=count)
     return count + 1
 
 
@@ -428,6 +458,7 @@ some = vk_api2.groups.getLongPollServer(group_id=my_number_group_id)
 current_ts = some['ts']
 server = some['server']
 key = some['key']
+change_server = count_new_time(datetime.datetime.now().replace(microsecond=0, second=0), 50)
 message = ""
 run = 1
 count = 0
@@ -441,14 +472,24 @@ next_time = datetime.datetime.now()
 while run:
     # wait for new requests
     message, current_user_id, current_ts = get_message(my_number_group_id, server, current_ts, key)
-    
+
+    # if it is time to change LongPollServer
+    if datetime.datetime.now() >= change_server:
+        some = vk_api2.groups.getLongPollServer(group_id=my_number_group_id)
+        current_ts = some['ts']
+        server = some['server']
+        key = some['key']
+        change_server = count_new_time(change_server, 50)
+
     # chek if it is time to analyse again
     if have_a_task and datetime.datetime.now() >= next_time:
         next_time, count = group.repeat_the_process(count, next_time)
         
     # check if it is time to give recommendations
     if have_a_task and datetime.datetime.now() >= next_recommend:
-        count = group.recommend(count)
+        count = group.recommend_day(count)
+        if datetime.datetime.now().weekday() == 0:
+            count = group.recommend_week(count)
         next_recommend = count_new_time(next_recommend, 1440)
 
     code, analyse_group_id, frequency_number = process_input_message(message)
@@ -475,8 +516,9 @@ while run:
         run, count = switch_off(count, current_user_id)
     elif code == 1:
         # if the user WHO GAVE A TASK decided to cancel it with a 'stop' or 'Stop' command
+        if have_a_task:
+            del group
         have_a_task, count = cancel_the_task(have_a_task, current_user_id, count, master_id)
-        del group
     elif code == 4:
         # greeting
         count = say_hello(count, current_user_id)
@@ -492,3 +534,17 @@ while run:
         (number of minutes in a day)
         '''
         count = incorrect_period_value(count, current_user_id)
+    elif code == 7:
+        # If the user needs today's best online percent and the time it happened
+        if have_a_task and current_user_id == master_id:
+            count = group.recommend_day(count)
+        else:
+            vk_api2.messages.send(user_id=current_user_id, message="Sorry, not available now!", random_id=count)
+            count += 1
+    elif code == 8:
+        # If the user needs week's best online percent and the time it happened
+        if have_a_task and current_user_id == master_id:
+            count = group.recommend_week(count)
+        else:
+            vk_api2.messages.send(user_id=current_user_id, message="Sorry, not available now!", random_id=count)
+            count += 1
