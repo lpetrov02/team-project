@@ -160,7 +160,7 @@ class Group:
                 max_online = self.archive[i][3]
                 best_time = i
         if summary_percents > max_summary_day:
-            return summary_percents, j, best_time
+            return summary_percents, j, best_time, max_online
         return max_summary_day, day_with_the_highest_avg_percent, best_time, max_online
 
     def recommendation_for_this_week(self):
