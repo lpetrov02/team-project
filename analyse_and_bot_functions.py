@@ -237,9 +237,10 @@ def instruction_message(current_user_id):
     string += "Period should be pretty and not too small)   "
     string += "You can CANCEL YOUR TASK: just send 'stop'   "
     string += "Have a good day!!"
-    # vk_api2.messages.send(user_id=current_user_id, sticker_id=8616, random_id=count)
-    vk_api2.messages.send(user_id=current_user_id, message=string, attachment="photo-200698416_457239021",
-                          random_id=r_id)
+
+    vk_api2.messages.send(
+        user_id=current_user_id, message=string, attachment="photo-200698416_457239021", random_id=r_id
+    )
     return
 
 
