@@ -171,6 +171,7 @@ def process_input_message(message):
 
 
 def get_r_id(current_user_id):
+    '''
     obj = vk_api2.messages.getHistory(user_id=current_user_id, offset=0, extended=1)
     if len(obj['items']) == 0:
         return 1
@@ -178,6 +179,11 @@ def get_r_id(current_user_id):
         for i in range(20):
             if obj['items'][i]['from_id'] == -my_number_group_id:
                 return obj['items'][i]['random_id'] + 1
+    '''
+
+    t = datetime.datetime.now()
+    random_id = t.minute * 60000 + t.second * 1000 + t.microsecond
+    return random_id
 
 
 def switch_off(current_user_id):

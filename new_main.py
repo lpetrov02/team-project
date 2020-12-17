@@ -50,7 +50,7 @@ while run:
         current_ts = some['ts']
         server = some['server']
         key = some['key']
-        change_server = func.count_new_time(change_server, 50)
+        change_server = func.count_new_time(change_server, 30)
 
     # chek if it is time to analyse again
     if have_a_task and datetime.datetime.now() >= next_time:
@@ -87,7 +87,7 @@ while run:
         run = func.switch_off(current_user_id)
     elif code == 1:
         # if the user WHO GAVE A TASK decided to cancel it with a 'stop' or 'Stop' command
-        if have_a_task:
+        if have_a_task and current_user_id == master_id:
             del group
         have_a_task = func.cancel_the_task(have_a_task, current_user_id, master_id)
     elif code == 4:

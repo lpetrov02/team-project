@@ -3,6 +3,7 @@ import datetime
 import requests
 import time
 import random
+import analyse_and_bot_functions as func
 import math
 
 
@@ -19,14 +20,6 @@ vk_api2 = vk.API(session2, v=5.92)
 
 month_length = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 days_of_the_week = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-
-
-def get_r_id(current_user_id):
-    obj = vk_api2.messages.getHistory(user_id=current_user_id, offset=0, count=2)
-    if len(obj['items']) == 0:
-        return 0
-    else:
-        return obj['items'][1]['random_id'] + 1
 
 
 class Group:
@@ -120,8 +113,12 @@ class Group:
         self.archive[cell_to_update][3] = new_one
 
     def recommendation_for_this_day_of_the_week(self):
+        """
+        this function runs at about 00:00 daily and recommends: when it is going to be the best time for posts this day.
+        :return: returns nothing, just sends a message with recommendation
+        """
         # average stats and recommendation for this day of the week past 4 last weeks
-        r_id = get_r_id(self.master_id)
+        r_id = func.get_r_id(self.master_id)
         
         day = datetime.datetime.now().weekday()
         start = day * self.analyses_per_day
@@ -139,54 +136,89 @@ class Group:
         vk_api2.messages.send(user_id=self.master_id, message=recommend_message, random_id=r_id)
         return
 
-    def get_one_day_information_v1(self, j, max_summary_day, day_with_the_highest_avg_percent, best_time, max_online):
+    def get_one_day_information_v1(
+            self, day, max_summary_percent, day_with_the_highest_summary_percent, best_time, max_online
+    ):
+        """
+        function to look for highest percents between average percents on a week
+        :param day: the number of the day to get information about
+        :param max_summary_percent: the day withe the highest summary online percent
+         (among those that we have already checked). So, it is the current highest percent for a day.
+        :param day_with_the_highest_summary_percent: Number of the day when the 'max_summary_percent' was fixed
+        :param best_time: the moment of time withe highest online percent during the week
+        :param max_online: that highest percent
+        :return: updated 'max_summary_percent', 'day_with_the_highest_summary_percent', 'best_time' and 'max_online'
+        """
         # needed for 'recommendation_for_this_week'
         summary_percents = 0
-        for i in range(self.analyses_per_day * j, self.analyses_per_day * (j + 1)):
+        for i in range(self.analyses_per_day * day, self.analyses_per_day * (day + 1)):
             summary_percents += self.average_percents[i]
             if self.average_percents[i] > max_online:
                 max_online = self.average_percents[i]
                 best_time = i
-        if summary_percents > max_summary_day:
-            return summary_percents, j, best_time
-        return max_summary_day, day_with_the_highest_avg_percent, best_time, max_online
+        if summary_percents > max_summary_percent:
+            return summary_percents, day, best_time, max_online
+        return max_summary_percent, day_with_the_highest_summary_percent, best_time, max_online
 
-    def get_one_day_information_v2(self, j, max_summary_day, day_with_the_highest_avg_percent, best_time, max_online):
+    def get_one_day_information_v2(
+            self, day, max_summary_percent, day_with_the_highest_summary_percent, best_time, max_online
+    ):
         # needed for 'give_this_week_stats'
+        """
+               function to look for highest percents between certain percents on the current week
+               :param day: the number of the day to get information about
+               :param max_summary_percent: the day withe the highest summary online percent
+                (among those that we have already checked). So, it is the current highest percent for a day.
+               :param day_with_the_highest_summary_percent: Number of the day when the 'max_summary_percent' was fixed
+               :param best_time: the moment of time withe highest online percent during the week
+               :param max_online: that highest percent
+               :return: updated 'max_summary_percent', 'day_with_the_highest_summary_percent', 'best_time' and 'max_online'
+               """
+        # needed for 'recommendation_for_this_week'
         summary_percents = 0
-        for i in range(self.analyses_per_day * j, self.analyses_per_day * (j + 1)):
-            summary_percents += self.archive[i][3]
+        for i in range(self.analyses_per_day * day, self.analyses_per_day * (day + 1)):
+            summary_percents += self.arcive[i][3]
             if self.archive[i][3] > max_online:
                 max_online = self.archive[i][3]
                 best_time = i
-        if summary_percents > max_summary_day:
-            return summary_percents, j, best_time, max_online
-        return max_summary_day, day_with_the_highest_avg_percent, best_time, max_online
+        if summary_percents > max_summary_percent:
+            return summary_percents, day, best_time, max_online
+        return max_summary_percent, day_with_the_highest_summary_percent, best_time, max_online
 
     def recommendation_for_this_week(self):
+        """
+        function that runs weekly at about 00:00 and sends two messages: day withe the highest average percent and
+        time(with a day) when the percent was highest
+        Takes average percents for last four weeks
+        :return: nothing
+        """
         # recommendation gives the day with the highest average percents past 4 last weeks
-        r_id = get_r_id(self.master_id)
+        r_id = func.get_r_id(self.master_id)
         recommend_message = "Possibly, this week the best time will be "
         max_online, best_time, max_summary_during_the_day, best_day = 0, 0, 0, 0
+
         for j in range(7):
             max_summary_during_the_day, best_day, best_time, max_online = \
                 self.get_one_day_information_v1(j, max_summary_during_the_day, best_day, best_time, max_online)
-        max_summary_during_the_day /= self.analyses_per_day
+        max_average_during_the_day = max_summary_during_the_day / self.analyses_per_day
 
         day_with_the_best_time = best_time // self.analyses_per_day
         best_time %= self.analyses_per_day
         recommend_message += days_of_the_week[day_with_the_best_time] + \
                              self.index_to_date[best_time] + ": " + str(max_online) + "%"
-        recommend_message += self.index_to_date[best_time] + ": " + str(max_online) + "%"
         vk_api2.messages.send(user_id=self.master_id, message=recommend_message, random_id=r_id)
         recommend_message = "This week, the day with the biggest average online percent was " + \
-                            days_of_the_week[best_day] + ": " + str(max_summary_during_the_day) + "%"
+                            days_of_the_week[best_day] + ": " + str(max_average_during_the_day) + "%"
         vk_api2.messages.send(user_id=self.master_id, message=recommend_message, random_id=(r_id + 1))
         return
 
     def give_today_stats(self):
+        """
+        Gives today's time with the highest online percent
+        :return: nothing
+        """
         # Just today's stats
-        r_id = get_r_id(self.master_id)
+        r_id = func.get_r_id(self.master_id)
 
         day = datetime.datetime.now().weekday()
         start = day * self.analyses_per_day
@@ -206,22 +238,29 @@ class Group:
         return
 
     def give_this_week_stats(self):
+        """
+        does the same as the 'recommendation_for_this_week' but can be summoned by the user every moment. It also take
+        certain percents of the current week, not average
+        :return: nothing
+        """
         # Just this week stats
-        r_id = get_r_id(self.master_id)
+        r_id = func.get_r_id(self.master_id)
         recommend_message = "This week the best time was "
         max_online, best_time, max_summary_during_the_day, best_day = 0, 0, 0, 0
+
         for j in range(7):
             max_summary_during_the_day, best_day, best_time, max_online = \
                 self.get_one_day_information_v2(j, max_summary_during_the_day, best_day, best_time, max_online)
-        max_summary_during_the_day /= self.analyses_per_day
+        max_average_during_the_day = max_summary_during_the_day / self.analyses_per_day
 
         best_time %= self.analyses_per_day
         day_with_the_best_time = best_time // self.analyses_per_day
         recommend_message += days_of_the_week[day_with_the_best_time] + \
                              self.index_to_date[best_time] + ": " + str(max_online) + "%"
         vk_api2.messages.send(user_id=self.master_id, message=recommend_message, random_id=r_id)
+
         recommend_message = "This week, the day with the biggest average online percent was " + \
-                            days_of_the_week[best_day] + ": " + str(max_summary_during_the_day) + "%"
+                            days_of_the_week[best_day] + ": " + str(max_average_during_the_day) + "%"
         vk_api2.messages.send(user_id=self.master_id, message=recommend_message, random_id=(r_id + 1))
         return
 
@@ -231,7 +270,7 @@ class Group:
         :param count - is needed to send messages:
         :return:
         """
-        r_id = get_r_id(self.master_id)
+        r_id = func.get_r_id(self.master_id)
         
         week_day = datetime.datetime.now().weekday()
         t = datetime.datetime.now()
@@ -258,7 +297,7 @@ class Group:
         """
         This function runs in the very beginning. It counts when to start analysing and when to give recommendations
         """
-        r_id = get_r_id(self.master_id)
+        r_id = func.get_r_id(self.master_id)
         current_time = datetime.datetime.now().replace(second=0, microsecond=0)
         current_minutes = current_time.minute + current_time.hour * 60
         minutes_to_wait = self.period - current_minutes % self.period
