@@ -1,7 +1,7 @@
 import vk
 import datetime
 import requests
-import group_class as gc
+import group_class_with_db as gc
 import analyse_and_bot_functions as func
 import time
 import random
@@ -29,7 +29,7 @@ some = vk_api2.groups.getLongPollServer(group_id=my_number_group_id)
 current_ts = some['ts']
 server = some['server']
 key = some['key']
-change_server = func.count_new_time(datetime.datetime.now().replace(microsecond=0, second=0), 50)
+change_server = datetime.datetime.now().replace(microsecond=0, second=0) + datetime.timedelta(minutes=30)
 message = ""
 run = 1
 count = 10000
@@ -61,7 +61,7 @@ while run:
         group.recommendation_for_this_day_of_the_week()
         if datetime.datetime.now().weekday() == 0:
             group.recommendation_for_this_week()
-        next_recommend += datetime.timedelta(0, 0, 1, 0, 0, 0, 0)
+        next_recommend += datetime.timedelta(days=1)
 
     code, analyse_group_id, frequency_number = func.process_input_message(message)
 
@@ -75,7 +75,7 @@ while run:
             have_a_task = 1
             # group initialising block
             group = gc.Group(analyse_group_id, frequency_number, current_user_id)
-            group.fill_in_index_to_date()
+            # group.fill_in_index_to_date()
             master_id = group.master_id
             # counting time when to start and when to give a new recommendation
             next_time, next_recommend = group.calculate_new_analyse_time()
@@ -84,10 +84,13 @@ while run:
             func.not_available(current_user_id)
     elif code == 2:
         # if the bot has received a secret password which switches it off
+        if have_a_task:
+            group.del_table()
         run = func.switch_off(current_user_id)
     elif code == 1:
         # if the user WHO GAVE A TASK decided to cancel it with a 'stop' or 'Stop' command
         if have_a_task and current_user_id == master_id:
+            group.del_table()
             del group
         have_a_task = func.cancel_the_task(have_a_task, current_user_id, master_id)
     elif code == 4:
@@ -117,4 +120,8 @@ while run:
             group.give_this_week_stats()
         else:
             func.not_available(current_user_id)
+    elif code == 9:
+        func.send_big_instruction(current_user_id)
+    elif code == 10:
+        func.task_by_button(current_user_id)
 

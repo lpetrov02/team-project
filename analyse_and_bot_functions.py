@@ -1,6 +1,9 @@
 import vk
 import datetime
 import requests
+import json
+# from new_main import vk_api2 as vk_api2
+# from new_main import month_length as month_length
 import group_class as gc
 import time
 import random
@@ -95,7 +98,7 @@ def get_message(group_id, server_, ts_, key_):
     # gets the message from the user
     response = requests.get('{server}?act=a_check&key={key}&ts={ts}&wait=25'.format
                             (server=server_, key=key_, ts=ts_)).json()
-    if len(response['updates']) > 0:
+    if 'updates' in response and len(response['updates']) > 0:
         return response['updates'][0]['object']['body'], response['updates'][0]['object']['user_id'], response['ts']
     return "", -1, response['ts']
 
@@ -138,6 +141,10 @@ def count_new_time(time_now, period):
 def process_input_message(message):
     # gets the massage from the user and returns a code which depends on the message type. Also returns the group id
     # and needed frequency. These fields will be used afterwards only if the message is: group_id: ...; period: ...
+    if message == "Want to give a task":
+        return 10, "", -1
+    if message.lower() == "help":
+        return 9, "", -1
     if message == "stop" or message == "Stop":
         return 1, "", -1
     if message == "":
@@ -155,7 +162,7 @@ def process_input_message(message):
             return 5, "", -1
         if not period.isdigit():
             return -1, "", -1
-        elif int(period) < 60 and 60 % int(period) != 0 or int(period) < 15 or 1440 % int(period) != 0:
+        elif not check_period_for_correct(int(period)):
             return 6, "", -1
         else:
             return 3, group, int(period)
@@ -167,6 +174,17 @@ def process_input_message(message):
         return 7, "", -1
     if message == "Recommend: week" or message == "recommend: week":
         return 8, "", -1
+    if message[0] == '$' and message[1:].strip().count(" ") == 1:
+        whitespace = message.find(' ')
+        group = message[1: whitespace].strip()
+        if not check_for_correct(group):
+            return 5, "", -1
+        period = message[whitespace + 1:].strip()
+        if not period.isdigit():
+            return -1, "", -1
+        if not check_period_for_correct(int(period)):
+            return 6, "", -1
+        return 3, group, int(period)
     return -1, "", -1
 
 
@@ -237,23 +255,98 @@ def say_hello(current_user_id):
 def instruction_message(current_user_id):
     # sends the message if user did send us the message of an unknown format
     r_id = get_r_id(current_user_id)
-    string = "Maaaaaaan! I don't understand you...   "
-    string += "You can SAY HELLO: your message should start with 'hello' or 'привет';   "
-    string += "You can GIVE ME A TASK in such a way: 'group_id: 'the_group_id'; period: 'period'.   "
-    string += "Period should be pretty and not too small)   "
-    string += "You can CANCEL YOUR TASK: just send 'stop'   "
-    string += "Have a good day!!"
+    string = "Maaaaaaan! I don't understand you... Read the instruction please. If you need it in a bigger variant"
+    string += ", send 'help'"
 
     vk_api2.messages.send(
-        user_id=current_user_id, message=string, attachment="photo-200698416_457239021", random_id=r_id
+        user_id=current_user_id, message=string, attachment="photo-200698416_457239022", random_id=r_id
     )
     return
 
 
-def check_for_correct(group_id):
-    try:
-        your_group_info = vk_api.groups.getById(group_id=group_id, fields='members_count', count=1)
-    except vk.exceptions.VkAPIError:
+def send_big_instruction(current_user_id):
+    # sends the instruction for the user
+    r_id = get_r_id(current_user_id)
+
+    kb = \
+    {
+        "one_time": False,
+        "buttons": [
+            [
+                {
+                    "action": {
+                        "type": "text",
+                        "payload": "{\"button\": \"1\"}",
+                        "label": "Stop"
+                    },
+                    "color": "negative"
+                },
+                {
+                    "action": {
+                        "type": "text",
+                        "payload": "{\"button\": \"2\"}",
+                        "label": "help"
+                    },
+                    "color": "primary"
+                }
+            ],
+            [
+                {
+                    "action": {
+                        "type": "text",
+                        "payload": "{\"button\": \"2\"}",
+                        "label": "recommend: day"
+                    },
+                    "color": "secondary"
+                },
+                {
+                    "action": {
+                        "type": "text",
+                        "payload": "{\"button\": \"2\"}",
+                        "label": "recommend: week"
+                    },
+                    "color": "secondary"
+                }
+            ],
+            [
+                {
+                    "action": {
+                          "type": "text",
+                          "payload": "{\"button\": \"2\"}",
+                          "label": "Want to give a task"
+                    },
+                    "color": "positive"
+                }
+            ]
+        ]
+    }
+
+    kb = json.dumps(kb, ensure_ascii=False).encode('utf-8')
+    kb = str(kb.decode('utf-8'))
+
+    vk_api2.messages.send(
+        user_id=current_user_id,
+        message="В рамочку и на стену",
+        attachment="photo-200698416_457239023",
+        random_id=r_id,
+        keyboard=kb
+    )
+    return
+
+
+def check_for_correct(group_id_to_check):
+    your_group_info = vk_api2.groups.getById(group_id=group_id_to_check, fields='members_count', count=5)
+    if your_group_info[0]['id'] == my_number_group_id and group_id_to_check != 'memkn_funclub':
+        return 0
+    return 1
+
+
+def check_period_for_correct(period):
+    if period < 15 or period > 1440:
+        return 0
+    if period < 60 and 60 % period != 0:
+        return 0
+    if 1440 % period != 0:
         return 0
     return 1
 
@@ -263,3 +356,12 @@ def not_available(current_user_id):
     vk_api2.messages.send(user_id=current_user_id, message="Not available now!", random_id=r_id)
     vk_api2.messages.send(user_id=current_user_id, sticker_id=4331, random_id=(r_id + 1))
     return
+
+
+def task_by_button(current_user_id):
+    r_id = get_r_id(current_user_id)
+    vk_api2.messages.send(
+        user_id=current_user_id,
+        message="Send the group_id and the period with a whitespace between them and '$' in the beginning",
+        random_id=r_id
+    )
