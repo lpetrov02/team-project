@@ -141,14 +141,20 @@ def count_new_time(time_now, period):
 def process_input_message(message):
     # gets the massage from the user and returns a code which depends on the message type. Also returns the group id
     # and needed frequency. These fields will be used afterwards only if the message is: group_id: ...; period: ...
+    if message == "":
+        return 0, "", -1
+    if message[0] == '~':
+        if not check_recommend_time(message):
+            return -1, "", -1
+        return 12, message, -1
+    if message == "Set time":
+        return 11, "", -1
     if message == "Want to give a task":
         return 10, "", -1
     if message.lower() == "help":
         return 9, "", -1
     if message == "stop" or message == "Stop":
         return 1, "", -1
-    if message == "":
-        return 0, "", -1
     if message == "lsr_memkn6":
         return 2, "", -1
     if message.count(';') == 1:
@@ -189,16 +195,6 @@ def process_input_message(message):
 
 
 def get_r_id(current_user_id):
-    '''
-    obj = vk_api2.messages.getHistory(user_id=current_user_id, offset=0, extended=1)
-    if len(obj['items']) == 0:
-        return 1
-    else:
-        for i in range(20):
-            if obj['items'][i]['from_id'] == -my_number_group_id:
-                return obj['items'][i]['random_id'] + 1
-    '''
-
     t = datetime.datetime.now()
     random_id = t.minute * 60000 + t.second * 1000 + t.microsecond
     return random_id
@@ -264,6 +260,89 @@ def instruction_message(current_user_id):
     return
 
 
+def check_recommend_time(time_string):
+    if time_string[3] != ':' or not time_string[1: 3].isdigit() or not time_string[4: 6].isdigit():
+        return 0
+    hours = int(time_string[1: 3])
+    if 0 < hours < 24:
+        return 1
+    return 0
+
+
+def set_time(current_user_id):
+    r_id = get_r_id(current_user_id)
+
+    kb = \
+        {
+            "inline": True,
+            "buttons": [
+                [
+                    {
+                        "action": {
+                            "type": "text",
+                            "payload": "{\"button\": \"1\"}",
+                            "label": "~22:00"
+                        },
+                        "color": "primary"
+                    },
+                    {
+                        "action": {
+                            "type": "text",
+                            "payload": "{\"button\": \"2\"}",
+                            "label": "~23:00"
+                        },
+                        "color": "positive"
+                    },
+                    {
+                        "action": {
+                            "type": "text",
+                            "payload": "{\"button\": \"2\"}",
+                            "label": "~00:00"
+                        },
+                        "color": "primary"
+                    }
+                ],
+                [
+                    {
+                        "action": {
+                            "type": "text",
+                            "payload": "{\"button\": \"2\"}",
+                            "label": "~19:00"
+                        },
+                        "color": "positive"
+                    },
+                    {
+                        "action": {
+                            "type": "text",
+                            "payload": "{\"button\": \"2\"}",
+                            "label": "~20:00"
+                        },
+                        "color": "primary"
+                    },
+                    {
+                        "action": {
+                            "type": "text",
+                            "payload": "{\"button\": \"2\"}",
+                            "label": "~21:00"
+                        },
+                        "color": "positive"
+                    }
+                ]
+            ]
+        }
+
+    kb = json.dumps(kb, ensure_ascii=False).encode('utf-8')
+    kb = str(kb.decode('utf-8'))
+
+    vk_api2.messages.send(
+        user_id=current_user_id,
+        message="When would you like to receive recommendations?",
+        random_id=r_id,
+        keyboard=kb
+    )
+    return
+
+
 def send_big_instruction(current_user_id):
     # sends the instruction for the user
     r_id = get_r_id(current_user_id)
@@ -316,6 +395,14 @@ def send_big_instruction(current_user_id):
                           "label": "Want to give a task"
                     },
                     "color": "positive"
+                },
+                {
+                    "action": {
+                        "type": "text",
+                        "payload": "{\"button\": \"2\"}",
+                        "label": "Set time"
+                    },
+                    "color": "primary"
                 }
             ]
         ]

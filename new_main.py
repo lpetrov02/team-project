@@ -63,9 +63,10 @@ while run:
             group.recommendation_for_this_week()
         next_recommend += datetime.timedelta(days=1)
 
-    code, analyse_group_id, frequency_number = func.process_input_message(message)
+    code, return_message, frequency_number = func.process_input_message(message)
 
     if code == 3:
+        analyse_group_id = return_message
         # this code means that user gave a correct task
         if not have_a_task or current_user_id == master_id:
             '''
@@ -124,4 +125,16 @@ while run:
         func.send_big_instruction(current_user_id)
     elif code == 10:
         func.task_by_button(current_user_id)
+    elif code == 11:
+        func.set_time(current_user_id)
+    elif code == 12:
+        if have_a_task and current_user_id == master_id:
+            r_id = func.get_r_id(current_user_id)
+            next_recommend = next_recommend.replace(hour=int(return_message[1: 3]))
+            vk_api2.messages.send(
+                user_id=current_user_id,
+                message=f"I'll send recommendations at {return_message[1:]}!",
+                random_id=r_id
+            )
+            group.recommend_hour = int(return_message[1: 3])
 

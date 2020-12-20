@@ -43,6 +43,7 @@ class Group:
           index_to_date: in the storage we keep the moment of time as a code - gust an integer number. But the user
         would prefer 'Mon, 00:00: 30%' to '0: 30%'. That's why we need this array
         """
+        self.recommend_hour = 0
         self.group_id = group_id
         self.master_id = master_id
         self.period = freq
@@ -166,11 +167,15 @@ class Group:
 
         r_id = func.get_r_id(self.master_id)
 
+        today_or_tomorrow = "today"
         day = datetime.datetime.now().weekday()
+        if self.recommend_time != 0:
+            day = (day + 1) % 7
+            today_or_tomorrow = "tomorrow"
         start = day * self.analyses_per_day
         finish = (day + 1) * self.analyses_per_day
 
-        recommend_message = "Possibly, today the best time will be "
+        recommend_message = f"Possibly, {today_or_tomorrow} the best time will be "
         max_online, best_time = 0, 0
         for i in range(start, finish):
             sq = f"SELECT average_percent FROM {name} WHERE analyse_number={i}"
