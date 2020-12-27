@@ -264,7 +264,7 @@ def check_recommend_time(time_string):
     if time_string[3] != ':' or not time_string[1: 3].isdigit() or not time_string[4: 6].isdigit():
         return 0
     hours = int(time_string[1: 3])
-    if 0 < hours < 24:
+    if 0 <= hours < 24:
         return 1
     return 0
 

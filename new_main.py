@@ -1,12 +1,14 @@
 import vk
 import datetime
 import requests
+import sqlite3 as sql
 import group_class_with_db as gc
 import analyse_and_bot_functions as func
 import time
 import random
 import math
 
+begin_file = "begin_task.txt"
 
 token = "65e6efa565e6efa565e6efa54f6593fb1f665e665e6efa53a5c6937a4636b3416a8bd92"
 group_token = "17e681fbe171945431a04f1abc752d41ff888698288abf74124de4e782c67f36e76484601991870f56b7a"
@@ -22,7 +24,6 @@ vk_api2 = vk.API(session2, v=5.92)
 month_length = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 days_of_the_week = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
-
 # starts working, gives default values to some variables
 
 some = vk_api2.groups.getLongPollServer(group_id=my_number_group_id)
@@ -37,6 +38,25 @@ master_id = -1
 have_a_task = 0
 next_recommend = datetime.datetime.now()
 next_time = datetime.datetime.now()
+
+file = open(begin_file, "r")
+task_from_the_previous_session = list(file.readline().split())
+if len(task_from_the_previous_session) > 0 and task_from_the_previous_session[0] != '-1':
+    gr_id = task_from_the_previous_session[0]
+    usr_id = int(task_from_the_previous_session[1])
+    prd = int(task_from_the_previous_session[2])
+    rec_hr = int(task_from_the_previous_session[3])
+    have_a_task = 1
+    group = gc.Group(gr_id, prd, usr_id)
+    group.recommend_hour = rec_hr
+    master_id = usr_id
+    next_time, next_recommend = group.calculate_new_analyse_time()
+    hrs = datetime.datetime.now().hour
+    if hrs > rec_hr:
+        next_recommend = next_recommend.replace(hour=rec_hr)
+    else:
+        next_recommend = next_recommend.replace(hour=rec_hr) - datetime.timedelta(days=1)
+file.close()
 
 # the end of 'initialization' block
 
@@ -75,6 +95,9 @@ while run:
             '''
             have_a_task = 1
             # group initialising block
+            file = open(begin_file, "w")
+            file.write(f"{analyse_group_id} {current_user_id} {frequency_number} 0")
+            file.close()
             group = gc.Group(analyse_group_id, frequency_number, current_user_id)
             # group.fill_in_index_to_date()
             master_id = group.master_id
@@ -93,6 +116,9 @@ while run:
         if have_a_task and current_user_id == master_id:
             group.del_table()
             del group
+            file = open(begin_file, "w")
+            file.write(f"-1 0 0 0")
+            file.close()
         have_a_task = func.cancel_the_task(have_a_task, current_user_id, master_id)
     elif code == 4:
         # greeting
@@ -131,10 +157,16 @@ while run:
         if have_a_task and current_user_id == master_id:
             r_id = func.get_r_id(current_user_id)
             next_recommend = next_recommend.replace(hour=int(return_message[1: 3]))
+            if datetime.datetime.now().hour <= int(return_message[1: 3]):
+                next_recommend -= datetime.timedelta(days=1)
             vk_api2.messages.send(
                 user_id=current_user_id,
                 message=f"I'll send recommendations at {return_message[1:]}!",
                 random_id=r_id
             )
             group.recommend_hour = int(return_message[1: 3])
-
+            file = open(begin_file, "w")
+            file.write(f"{group.group_id} {group.master_id} {group.period} {group.recommend_hour}")
+            file.close()
+        else:
+            not func.not_available(current_user_id)

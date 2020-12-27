@@ -64,22 +64,25 @@ class Group:
                         "'time' STRING"
                         ")"
                         )
+            sq = f"SELECT * FROM {name} WHERE analyse_number={0}"
+            cur.execute(sq)
+            table_existed = cur.fetchone()
             con.commit()
-        for j in range(7):
-            for i in range(self.analyses_per_day * j, self.analyses_per_day * (j + 1)):
-                s = days_of_the_week[j] + ", "
-                hours = (i % self.analyses_per_day) * self.period // 60
-                minutes = (i % self.analyses_per_day) * self.period % 60
-                if hours < 10:
-                    s += "0"
-                s += str(hours) + ":"
-                if minutes < 10:
-                    s += "0"
-                s += str(minutes)
-                beginner_value = 0
-                stats = (i, 0, 0, 0, 0, 0, 0, s)
-                cur.execute(f"""INSERT OR REPLACE INTO {name} VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", stats)
-            con.commit()
+            if table_existed is None or table_existed == []:
+                for j in range(7):
+                    for i in range(self.analyses_per_day * j, self.analyses_per_day * (j + 1)):
+                        s = days_of_the_week[j] + ", "
+                        hours = (i % self.analyses_per_day) * self.period // 60
+                        minutes = (i % self.analyses_per_day) * self.period % 60
+                        if hours < 10:
+                            s += "0"
+                        s += str(hours) + ":"
+                        if minutes < 10:
+                            s += "0"
+                        s += str(minutes)
+                        stats = (i, 0, 0, 0, 0, 0, 0, s)
+                        cur.execute(f"""INSERT OR REPLACE INTO {name} VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", stats)
+                    con.commit()
 
     def del_table(self):
         # con = sql.connect('vk_bot.db')
@@ -169,11 +172,20 @@ class Group:
 
         today_or_tomorrow = "today"
         day = datetime.datetime.now().weekday()
-        if self.recommend_time != 0:
+        if self.recommend_hour != 0:
             day = (day + 1) % 7
             today_or_tomorrow = "tomorrow"
+
         start = day * self.analyses_per_day
         finish = (day + 1) * self.analyses_per_day
+
+        sq = f"SELECT weeks_passed FROM {name} WHERE analyse_number={start}"
+        cur.execute(sq)
+        checker = cur.fetchone()
+        if checker[0] == 0:
+            day = (day - 1) % 7
+            start = day * self.analyses_per_day
+            finish = (day + 1) * self.analyses_per_day
 
         recommend_message = f"Possibly, {today_or_tomorrow} the best time will be "
         max_online, best_time = 0, 0
@@ -185,10 +197,10 @@ class Group:
                 max_online = current_percent
                 best_time = i
 
-        sq = f"SELECT time {name} WHERE analyse_number={best_time}"
+        sq = f"SELECT time FROM {name} WHERE analyse_number={best_time}"
         cur.execute(sq)
         recommend_time = cur.fetchone()[0]
-        recommend_message += recommend_time + ": " + str(max_online) + "%"
+        recommend_message += recommend_time[5:] + ": " + str(max_online) + "%"
         vk_api2.messages.send(user_id=self.master_id, message=recommend_message, random_id=r_id)
         return
 
@@ -304,6 +316,7 @@ class Group:
         r_id = func.get_r_id(self.master_id)
 
         day = datetime.datetime.now().weekday()
+
         start = day * self.analyses_per_day
         finish = (day + 1) * self.analyses_per_day
 
@@ -321,7 +334,7 @@ class Group:
         sq = f"SELECT time FROM {name} WHERE analyse_number={best_time}"
         cur.execute(sq)
         recommend_time = cur.fetchone()[0]
-        recommend_message += recommend_time + ": " + str(max_online) + "%"
+        recommend_message += recommend_time[5:] + ": " + str(max_online) + "%"
         vk_api2.messages.send(user_id=self.master_id, message=recommend_message, random_id=r_id)
         return
 
@@ -399,6 +412,6 @@ class Group:
         next_recommend_time = current_time.replace(microsecond=0, second=0, minute=0, hour=0) + datetime.timedelta(
             days=1
         )
-        ok_message = "OK! Starting in " + str(minutes_to_wait) + " minutes!"
+        ok_message = "Yes, my dear! Starting in " + str(minutes_to_wait) + " minutes!"
         vk_api2.messages.send(user_id=self.master_id, message=ok_message, random_id=r_id)
         return next_analyse_time, next_recommend_time
