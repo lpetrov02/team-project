@@ -35,6 +35,7 @@ vk_api2 = vk.API(session2, v=5.92)
 
 month_length = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 days_of_the_week = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+days_of_the_week2 = {"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6}
 
 
 def upload_picture(picture_path):
@@ -92,6 +93,8 @@ def process_input_message(message):
     """
     if message == "":
         return 0, "", -1
+    if message[:2] == "gr" and message[2] == ':' and message[3:].strip() in days_of_the_week2:
+        return 13, "", days_of_the_week2[message[3:].strip()]
     if message[0] == '~':
         if not check_recommend_time(message):
             return -1, "", -1
