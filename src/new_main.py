@@ -86,9 +86,10 @@ while run:
             group.recommendation_for_this_week()
         next_recommend += datetime.timedelta(days=1)
 
-    code, return_message, frequency_number = func.process_input_message(message)
+    code, return_message, return_number = func.process_input_message(message)
 
     if code == 3:
+        frequency_number = return_number
         analyse_group_id = return_message
         # this code means that user gave a correct task
         if not have_a_task or current_user_id == master_id:
@@ -172,3 +173,19 @@ while run:
             file.close()
         else:
             not func.not_available(current_user_id)
+    elif code == 13:
+        if have_a_task and current_user_id == master_id:
+            stats_dict = group.daily_graph_request(return_number)
+            stats_dict = func.dict_with_strings_to_dict_for_plots(stats_dict)
+            ph_id = "photos" + str(current_user_id) + \
+                    datetime.datetime.now().day + datetime.datetime.now().hour + \
+                    datetime.datetime.now().minute + datetime.datetime.now().second
+            func.create_daily_image(stats_dict, ph_id)
+            res_url = func.upload_picture(f'../data/image/{ph_id}')
+            stop_ind = res_url.find('%')
+            vk_api2.messages.send(
+                user_id=current_user_id,
+                message=f"Get it!",
+                random_id=r_id,
+                attachment=res_url[32: stop_ind]
+            )
