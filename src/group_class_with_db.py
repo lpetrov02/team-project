@@ -7,12 +7,12 @@ import random
 import src.analyse_and_bot_functions as func
 import math
 
-# from new_main import vk_api2 as vk_api2
-# from new_main import days_of_the_week as days_of_the_week
 
 con = sql.connect('../data/vk_bot.db')
 cur = con.cursor()
 
+
+# top secret information, close your eyes...
 token = "65e6efa565e6efa565e6efa54f6593fb1f665e665e6efa53a5c6937a4636b3416a8bd92"
 group_token = "17e681fbe171945431a04f1abc752d41ff888698288abf74124de4e782c67f36e76484601991870f56b7a"
 analyse_group_id = 'memkn'
@@ -49,10 +49,8 @@ class Group:
         self.period = freq
         self.analyses_per_day = 1440 // self.period
 
-        # con = sql.connect('vk_bot.db')
         name = "stats" + str(self.master_id)
         with con:
-            # cur = con.cursor()
             cur.execute(f"CREATE TABLE IF NOT EXISTS {name} ("
                         "'analyse_number' INTEGER, "
                         "'average_percent' INTEGER, "
@@ -70,24 +68,32 @@ class Group:
             con.commit()
             if table_existed is None or table_existed == []:
                 for j in range(7):
-                    for i in range(self.analyses_per_day * j, self.analyses_per_day * (j + 1)):
-                        s = days_of_the_week[j] + ", "
-                        hours = (i % self.analyses_per_day) * self.period // 60
-                        minutes = (i % self.analyses_per_day) * self.period % 60
-                        if hours < 10:
-                            s += "0"
-                        s += str(hours) + ":"
-                        if minutes < 10:
-                            s += "0"
-                        s += str(minutes)
-                        stats = (i, 0, 0, 0, 0, 0, 0, s)
-                        cur.execute(f"""INSERT OR REPLACE INTO {name} VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", stats)
-                    con.commit()
+                    self.fill_the_database(j)
+
+    def fill_the_database(self, week_day):
+        """
+        fills the database in '__init__'
+        :param week_day:
+        :return:
+        """
+        name = "stats" + str(self.master_id)
+        for i in range(self.analyses_per_day * week_day, self.analyses_per_day * (week_day + 1)):
+            s = days_of_the_week[week_day] + ", "
+            hours = (i % self.analyses_per_day) * self.period // 60
+            minutes = (i % self.analyses_per_day) * self.period % 60
+            if hours < 10:
+                s += "0"
+            s += str(hours) + ":"
+            if minutes < 10:
+                s += "0"
+            s += str(minutes)
+            stats = (i, 0, 0, 0, 0, 0, 0, s)
+            cur.execute(f"""INSERT OR REPLACE INTO {name} VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", stats)
+        con.commit()
 
     def del_table(self):
-        # con = sql.connect('vk_bot.db')
+        # deletes data from the table
         name = "stats" + str(self.master_id)
-        # cur = con.cursor()
         cur.execute(f"""DELETE FROM {name}""")
         con.commit()
 
@@ -104,9 +110,11 @@ class Group:
         number_of_members1 = number_of_members
         already_count = 0
         while already_count < number_of_members:
+            # if we haven't checked all members yet
             group_members_ids = vk_api.groups.getMembers(group_id=self.group_id, offset=already_count, fields='online')
             for x in group_members_ids['items']:
                 if 'online' in x:
+                    # if the information about the online status is available
                     online += x['online']
                 else:
                     number_of_members1 -= 1
@@ -128,8 +136,12 @@ class Group:
         return percent
 
     def update_data(self, new_one, cell_to_update):
-        # con = sql.connect('vk_bot.db')
-        # cur = con.cursor()
+        """
+        updates the database after the analyze
+        :param new_one: the new value of online percent
+        :param cell_to_update: the cell of the database which we need to update
+        :return:
+        """
         name = "stats" + str(self.master_id)
 
         sq = f"SELECT * FROM {name} WHERE analyse_number={cell_to_update}"
@@ -159,26 +171,27 @@ class Group:
 
     def recommendation_for_this_day_of_the_week(self):
         """
+        average stats and recommendation for this day of the week past 4 last weeks
         this function runs at about 00:00 daily and recommends: when it is going to be the best time for posts this day.
         :return: returns nothing, just sends a message with recommendation
         """
-        # average stats and recommendation for this day of the week past 4 last weeks
 
-        # con = sql.connect('vk_bot.db')
-        # cur = con.cursor()
         name = "stats" + str(self.master_id)
 
         r_id = func.get_new_random_id()
 
+        # высняем, за сегодн давать рекомендацию или за завтра
         today_or_tomorrow = "today"
         day = datetime.datetime.now().weekday()
         if self.recommend_hour != 0:
             day = (day + 1) % 7
             today_or_tomorrow = "tomorrow"
+        # выяснили
 
         start = day * self.analyses_per_day
         finish = (day + 1) * self.analyses_per_day
 
+        # если за нужный день нет данных, даём рекомендацию за другой, то есть основанную на сегодншней статистике
         sq = f"SELECT weeks_passed FROM {name} WHERE analyse_number={start}"
         cur.execute(sq)
         checker = cur.fetchone()
@@ -187,6 +200,7 @@ class Group:
             start = day * self.analyses_per_day
             finish = (day + 1) * self.analyses_per_day
 
+        # начинаем обрабатывать статистику
         recommend_message = f"Possibly, {today_or_tomorrow} the best time will be "
         max_online, best_time = 0, 0
         for i in range(start, finish):
@@ -252,8 +266,6 @@ class Group:
                """
         # needed for 'recommendation_for_this_week'
 
-        # con = sql.connect('vk_bot.db')
-        # cur = con.cursor()
         name = "stats" + str(self.master_id)
 
         summary_percents = 0
@@ -278,8 +290,6 @@ class Group:
         """
         # recommendation gives the day with the highest average percents past 4 last weeks
 
-        # con = sql.connect('vk_bot.db')
-        # cur = con.cursor()
         name = "stats" + str(self.master_id)
 
         r_id = func.get_new_random_id()
@@ -307,10 +317,6 @@ class Group:
         Gives today's time with the highest online percent
         :return: nothing
         """
-        # Just today's stats
-
-        # con = sql.connect('vk_bot.db')
-        # cur = con.cursor()
         name = "stats" + str(self.master_id)
 
         r_id = func.get_new_random_id()
@@ -344,10 +350,6 @@ class Group:
         certain percents of the current week, not average
         :return: nothing
         """
-        # Just this week stats
-
-        # con = sql.connect('vk_bot.db')
-        # cur = con.cursor()
         name = "stats" + str(self.master_id)
 
         r_id = func.get_new_random_id()
@@ -373,7 +375,6 @@ class Group:
     def work_and_print(self):
         """
         updates data and sends current online percent
-        :param count - is needed to send messages:
         :return:
         """
         r_id = func.get_new_random_id()
@@ -407,6 +408,7 @@ class Group:
         current_time = datetime.datetime.now().replace(second=0, microsecond=0)
         current_minutes = current_time.minute + current_time.hour * 60
         minutes_to_wait = self.period - current_minutes % self.period
+        # начать анализ нужно так, чтобы попасть в период, то есть чтобы анализы каждый день начинались в полночь
         next_analyse_time = current_time + datetime.timedelta(0, 0, 0, minutes_to_wait // 60, minutes_to_wait % 60, 0,
                                                               0)
         next_recommend_time = current_time.replace(microsecond=0, second=0, minute=0, hour=0) + datetime.timedelta(

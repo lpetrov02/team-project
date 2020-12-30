@@ -10,6 +10,8 @@ import math
 
 begin_file = "../data/begin_task.txt"
 
+
+# top secret, don't look please
 token = "65e6efa565e6efa565e6efa54f6593fb1f665e665e6efa53a5c6937a4636b3416a8bd92"
 group_token = "17e681fbe171945431a04f1abc752d41ff888698288abf74124de4e782c67f36e76484601991870f56b7a"
 analyse_group_id = 'memkn'
@@ -44,15 +46,10 @@ next_time = datetime.datetime.now()
 
 file = open(begin_file, "r")
 task_from_the_previous_session = list(file.readline().split())
-if len(task_from_the_previous_session) > 0 and task_from_the_previous_session[0] != '-1':
-    gr_id = task_from_the_previous_session[0]
-    usr_id = int(task_from_the_previous_session[1])
-    prd = int(task_from_the_previous_session[2])
-    rec_hr = int(task_from_the_previous_session[3])
-    have_a_task = 1
-    group = gc.Group(gr_id, prd, usr_id)
+gr_id, prd, master_id, rec_hr, have_a_task = func.continue_the_old_task(begin_file)
+if have_a_task:
+    group = gc.Group(gr_id, prd, master_id)
     group.recommend_hour = rec_hr
-    master_id = usr_id
     next_time, next_recommend = group.calculate_new_analyse_time()
     hrs = datetime.datetime.now().hour
     if hrs > rec_hr:
@@ -65,7 +62,7 @@ file.close()
 
 while run:
     # wait for new requests
-    message, current_user_id, current_ts = func.get_message(my_number_group_id, server, current_ts, key)
+    message, current_user_id, current_ts = func.get_message(server, current_ts, key)
 
     # if it is time to change LongPollServer
     if datetime.datetime.now() >= change_server:
@@ -109,7 +106,7 @@ while run:
             next_time, next_recommend = group.calculate_new_analyse_time()
         else:
             # in the case when the user wants to give a new task while bot is already working on the OTHER user's task.
-            func.not_available(current_user_id)
+            func.not_available_i_am_busy(current_user_id)
     elif code == 2:
         # if the bot has received a secret password which switches it off
         if have_a_task:
@@ -172,14 +169,16 @@ while run:
             file.write(f"{group.group_id} {group.master_id} {group.period} {group.recommend_hour}")
             file.close()
         else:
-            not func.not_available(current_user_id)
+            not func.not_available_i_am_busy(current_user_id)
+    '''
+    IN DEVELOPMENT
     elif code == 13:
         if have_a_task and current_user_id == master_id:
             stats_dict = group.daily_graph_request(return_number)
             stats_dict = func.dict_with_strings_to_dict_for_plots(stats_dict)
             ph_id = "photos" + str(current_user_id) + \
-                    datetime.datetime.now().day + datetime.datetime.now().hour + \
-                    datetime.datetime.now().minute + datetime.datetime.now().second
+                    str(datetime.datetime.now().day) + str(datetime.datetime.now().hour) + \
+                    str(datetime.datetime.now().minute) + str(datetime.datetime.now().second)
             func.create_daily_image(stats_dict, ph_id)
             res_url = func.upload_picture(f'../data/image/{ph_id}')
             stop_ind = res_url.find('%')
@@ -189,3 +188,4 @@ while run:
                 random_id=r_id,
                 attachment=res_url[32: stop_ind]
             )
+    '''
